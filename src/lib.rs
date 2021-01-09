@@ -285,7 +285,7 @@ impl<B: MysqlShim<W>, R: Read, W: Write> MysqlIntermediary<B, R, W> {
             self.writer.set_seq(seq + 1);
         }
 
-        writers::write_ok_packet(&mut self.writer, 0, 0, StatusFlags::empty())?;
+        writers::write_ok_packet(&mut self.writer, 0, 0, StatusFlags::empty(), "".to_string())?;
         self.writer.flush()?;
 
         Ok(())
@@ -401,7 +401,13 @@ impl<B: MysqlShim<W>, R: Read, W: Write> MysqlIntermediary<B, R, W> {
                     )?;
                 }
                 Command::Ping => {
-                    writers::write_ok_packet(&mut self.writer, 0, 0, StatusFlags::empty())?;
+                    writers::write_ok_packet(
+                        &mut self.writer,
+                        0,
+                        0,
+                        StatusFlags::empty(),
+                        "".to_string(),
+                    )?;
                 }
                 Command::Quit => {
                     break;

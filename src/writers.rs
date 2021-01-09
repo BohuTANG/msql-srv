@@ -19,12 +19,15 @@ pub(crate) fn write_ok_packet<W: Write>(
     rows: u64,
     last_insert_id: u64,
     s: StatusFlags,
+    info: String,
 ) -> io::Result<()> {
     w.write_u8(0x00)?; // OK packet type
     w.write_lenenc_int(rows)?;
     w.write_lenenc_int(last_insert_id)?;
     w.write_u16::<LittleEndian>(s.bits())?;
     w.write_all(&[0x00, 0x00])?; // no warnings
+    w.write_all(info.as_bytes())?;
+    w.write_u8(0x00)?; // EOF
     w.end_packet()
 }
 

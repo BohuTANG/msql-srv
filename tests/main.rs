@@ -355,7 +355,7 @@ fn multi_result() {
             }];
             let mut row = w.start(cols)?;
             row.write_col(1024i16)?;
-            let w = row.finish_one()?;
+            let w = row.finish_one("".to_string())?;
             let mut row = w.start(cols)?;
             row.write_col(1025i16)?;
             row.finish()

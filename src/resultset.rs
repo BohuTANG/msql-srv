@@ -16,7 +16,7 @@ pub struct InitWriter<'a, W: Write> {
 impl<'a, W: Write + 'a> InitWriter<'a, W> {
     /// Tell client that database context has been changed
     pub fn ok(self) -> io::Result<()> {
-        writers::write_ok_packet(self.writer, 0, 0, StatusFlags::empty())
+        writers::write_ok_packet(self.writer, 0, 0, StatusFlags::empty(), "".to_string())
     }
 
     /// Tell client that there was a problem changing the database context.
@@ -78,7 +78,11 @@ impl<'a, W: Write + 'a> StatementMetaWriter<'a, W> {
 }
 
 enum Finalizer {
-    Ok { rows: u64, last_insert_id: u64 },
+    Ok {
+        rows: u64,
+        last_insert_id: u64,
+        info: String,
+    },
     EOF,
 }
 
@@ -126,7 +130,8 @@ impl<'a, W: Write> QueryResultWriter<'a, W> {
             Some(Finalizer::Ok {
                 rows,
                 last_insert_id,
-            }) => writers::write_ok_packet(self.writer, rows, last_insert_id, status),
+                info,
+            }) => writers::write_ok_packet(self.writer, rows, last_insert_id, status, info),
             Some(Finalizer::EOF) => writers::write_eof_packet(self.writer, status),
         }
     }
@@ -144,11 +149,17 @@ impl<'a, W: Write> QueryResultWriter<'a, W> {
     /// Send an empty resultset response to the client indicating that `rows` rows were affected by
     /// the query in this resultset. `last_insert_id` may be given to communiate an identifier for
     /// a client's most recent insertion.
-    pub fn complete_one(mut self, rows: u64, last_insert_id: u64) -> io::Result<Self> {
+    pub fn complete_one(
+        mut self,
+        rows: u64,
+        last_insert_id: u64,
+        info: String,
+    ) -> io::Result<Self> {
         self.finalize(true)?;
         self.last_end = Some(Finalizer::Ok {
             rows,
             last_insert_id,
+            info,
         });
         Ok(self)
     }
@@ -157,7 +168,8 @@ impl<'a, W: Write> QueryResultWriter<'a, W> {
     /// the query. `last_insert_id` may be given to communiate an identifier for a client's most
     /// recent insertion.
     pub fn completed(self, rows: u64, last_insert_id: u64) -> io::Result<()> {
-        self.complete_one(rows, last_insert_id)?.no_more_results()
+        self.complete_one(rows, last_insert_id, "".to_string())?
+            .no_more_results()
     }
 
     /// Reply to the client's query with an error.
@@ -347,7 +359,7 @@ where
 }
 
 impl<'a, W: Write + 'a> RowWriter<'a, W> {
-    fn finish_inner(&mut self) -> io::Result<()> {
+    fn finish_inner(&mut self, info: String) -> io::Result<()> {
         if self.finished {
             return Ok(());
         }
@@ -363,6 +375,7 @@ impl<'a, W: Write + 'a> RowWriter<'a, W> {
             self.result.as_mut().unwrap().last_end = Some(Finalizer::Ok {
                 rows: self.col as u64,
                 last_insert_id: 0,
+                info,
             });
         } else {
             // we wrote out at least one row
@@ -373,12 +386,17 @@ impl<'a, W: Write + 'a> RowWriter<'a, W> {
 
     /// Indicate to the client that no more rows are coming.
     pub fn finish(self) -> io::Result<()> {
-        self.finish_one()?.no_more_results()
+        self.finish_one("".to_string())?.no_more_results()
+    }
+
+    /// Indicate to the client that no more rows are coming.
+    pub fn finish_with_info(self, info: String) -> io::Result<()> {
+        self.finish_one(info)?.no_more_results()
     }
 
     /// End this resultset response, and indicate to the client that no more rows are coming.
-    pub fn finish_one(mut self) -> io::Result<QueryResultWriter<'a, W>> {
-        self.finish_inner()?;
+    pub fn finish_one(mut self, info: String) -> io::Result<QueryResultWriter<'a, W>> {
+        self.finish_inner(info)?;
         // we know that dropping self will see self.finished == true,
         // and so Drop won't try to use self.result.
         Ok(self.result.take().unwrap())
@@ -387,6 +405,6 @@ impl<'a, W: Write + 'a> RowWriter<'a, W> {
 
 impl<'a, W: Write + 'a> Drop for RowWriter<'a, W> {
     fn drop(&mut self) {
-        self.finish_inner().unwrap();
+        self.finish_inner("".to_string()).unwrap();
     }
 }
